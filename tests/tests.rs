@@ -47,5 +47,57 @@ mod tests {
             ]))
         );
     }
-    // Add more tests for other functions, such as `eval`, as you implement them.
+    #[test]
+    fn test_addition() {
+        let input = "(+ 3.2 4.5)";
+        let expected = 7.7;
+        let expr = read(input).unwrap();
+        let result = eval(&expr).unwrap();
+        assert!((result - expected).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_subtraction() {
+        let input = "(- 7.0 2.5)";
+        let expected = 4.5;
+        let expr = read(input).unwrap();
+        let result = eval(&expr).unwrap();
+        assert!((result - expected).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_multiplication() {
+        let input = "(* 2.0 3.5)";
+        let expected = 7.0;
+        let expr = read(input).unwrap();
+        let result = eval(&expr).unwrap();
+        assert!((result - expected).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_division() {
+        let input = "(/ 10.0 2.0)";
+        let expected = 5.0;
+        let expr = read(input).unwrap();
+        let result = eval(&expr).unwrap();
+        assert!((result - expected).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_nested_operations() {
+        let input = "(+ (* 2.0 3.0) (- 10.0 4.0))";
+        let expected = 12.0;
+        let expr = read(input).unwrap();
+        let result = eval(&expr).unwrap();
+        assert!((result - expected).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_complex_nested_operations() {
+        let input = "(/ (* (- 8.0 2.0) (+ 1.5 2.5)) 10.0)";
+        let expected = 2.4;
+        let expr = read(input).unwrap();
+        let result = eval(&expr).unwrap();
+        assert!((result - expected).abs() < f64::EPSILON);
+    }
 }

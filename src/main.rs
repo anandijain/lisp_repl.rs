@@ -1,9 +1,11 @@
+use inkwell::context::Context;
 use lisp_repl::*;
+use rug::{Float, Integer, Rational};
 use rustyline::error::ReadlineError;
+use rustyline::history::History;
 use rustyline::validate::MatchingBracketValidator;
 use rustyline::{Cmd, Editor, EventHandler, KeyCode, KeyEvent, Modifiers};
 use rustyline::{Completer, Helper, Highlighter, Hinter, Validator};
-
 #[derive(Completer, Helper, Highlighter, Hinter, Validator)]
 struct InputValidator {
     #[rustyline(Validator)]
@@ -11,6 +13,19 @@ struct InputValidator {
 }
 
 fn main() -> Result<(), ReadlineError> {
+    let mut display_parser_output = true;
+    let mut display_compiler_output = false;
+
+    for arg in std::env::args() {
+        match arg.as_str() {
+            "--dp" => display_parser_output = true,
+            "--dc" => display_compiler_output = true,
+            _ => (),
+        }
+    }
+
+    println!("p{} c{}", display_parser_output, display_compiler_output);
+
     let h = InputValidator {
         brackets: MatchingBracketValidator::new(),
     };
@@ -21,17 +36,26 @@ fn main() -> Result<(), ReadlineError> {
         KeyEvent(KeyCode::Enter, Modifiers::ALT),
         EventHandler::Simple(Cmd::Newline),
     );
+    let mut previous_exprs = Vec::new();
 
     loop {
-        let readline = rl.readline(">> ");
+        let prompt_str = format! {"[%{}]>> ", rl.history().len().to_string()};
+
+        let readline = rl.readline(prompt_str.as_str());
         match readline {
             Ok(line) => {
                 rl.add_history_entry(line.as_str());
                 match read(&line) {
-                    Ok(expr) => match eval(&expr) {
-                        Ok(result) => println!("{}", result),
-                        Err(err) => println!("Error: {}", err),
-                    },
+                    Ok(expr) => {
+                        previous_exprs.push(expr.clone());
+                        if display_parser_output {
+                            println!("{:?}", expr);
+                        }
+                        match eval(&expr) {
+                            Ok(result) => println!("{}", result),
+                            Err(err) => println!("Error: {}", err),
+                        }
+                    }
                     Err(err) => println!("Error: {}", err),
                 }
             }
