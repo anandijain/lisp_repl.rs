@@ -100,4 +100,36 @@ mod tests {
         let result = eval(&expr).unwrap();
         assert!((result - expected).abs() < f64::EPSILON);
     }
+
+    #[test]
+    fn test_variadic_eval() {
+        let test_cases = vec![
+            ("(+ 1 2 3)", 6.0),
+            ("(* 2 3 4)", 24.0),
+            ("(- 10 2 3)", 5.0),
+            ("(/ 12 2 2)", 3.0),
+            ("(+ 1.5 2.5 3)", 7.0),
+            ("(* 1.5 2 3)", 9.0),
+            ("(- 5.5 2.5 1)", 2.0),
+            ("(/ 6.0 2 1.5)", 2.0),
+            ("(+ 1 (* 2 3))", 7.0),
+            ("(* (- 5 2) (+ 2 3))", 15.0),
+            ("(- (/ 24 2) (* 2 3 1))", 6.0),
+        ];
+
+        for (i, (input, expected)) in test_cases.into_iter().enumerate() {
+            let expr = read(input).unwrap();
+            let result = eval(&expr).unwrap();
+
+            assert!(
+                result == expected,
+                "Test case {}: failed on input '{}' ({:?}), expected {}, got {}",
+                i + 1,
+                input,
+                expr,
+                expected,
+                result
+            );
+        }
+    }
 }

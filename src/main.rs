@@ -36,6 +36,10 @@ fn main() -> Result<(), ReadlineError> {
         KeyEvent(KeyCode::Enter, Modifiers::ALT),
         EventHandler::Simple(Cmd::Newline),
     );
+
+    let context = Context::create();
+    let module = context.create_module("repl");
+    let builder = context.create_builder();
     let mut previous_exprs = Vec::new();
 
     loop {
@@ -47,11 +51,18 @@ fn main() -> Result<(), ReadlineError> {
                 rl.add_history_entry(line.as_str());
                 match read(&line) {
                     Ok(expr) => {
+                        // for (index, prev) in previous_exprs.iter().enumerate() {
+                        //     println!("{}: {:?}", index, prev);
+
+                        //     Compiler::compile(&context, &builder, &module, prev)
+                        //         .expect("Cannot re-add previously compiled function.");
+                        // }
+
                         previous_exprs.push(expr.clone());
                         if display_parser_output {
                             println!("{:?}", expr);
                         }
-                        match eval(&expr) {
+                        match Compiler::compile(&context, &builder, &module, &expr) {
                             Ok(result) => println!("{}", result),
                             Err(err) => println!("Error: {}", err),
                         }

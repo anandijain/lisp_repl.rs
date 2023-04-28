@@ -1,17 +1,29 @@
-use inkwell::builder::Builder;
-use inkwell::context::Context;
-use inkwell::module::Module;
-use inkwell::passes::PassManager;
-use inkwell::values::{BasicValueEnum, FloatValue, PointerValue};
-use inkwell::FloatPredicate;
-use peg::error::ParseError;
-use peg::parser;
-use std::collections::HashMap;
-use std::fmt;
-use std::num::{ParseFloatError, ParseIntError};
+use inkwell::{
+    builder::Builder,
+    context::Context,
+    module::Module,
+    passes::PassManager,
+    types::{BasicMetadataTypeEnum, BasicTypeEnum},
+    values::{BasicMetadataValueEnum, BasicValueEnum, FloatValue, FunctionValue, PointerValue},
+    FloatPredicate,
+};
+use peg::{error::ParseError, parser};
+use std::{
+    borrow::Borrow,
+    collections::HashMap,
+    fmt,
+    iter::Peekable,
+    num::{ParseFloatError, ParseIntError},
+    ops::DerefMut,
+    str::Chars,
+};
 
 // mod compiler;
-
+// (define fact
+//     (lambda (n)
+//       (if (< n 2)
+//           1
+//           (* n (fact (- n 1))))))
 parser! {
     grammar lisp_parser() for str {
         // viz
@@ -59,24 +71,6 @@ pub enum Expr {
     List(Vec<Expr>),
 }
 
-#[derive(Debug)]
-enum NumberParseError {
-    Int(ParseIntError),
-    Float(ParseFloatError),
-}
-
-impl From<ParseIntError> for NumberParseError {
-    fn from(err: ParseIntError) -> Self {
-        NumberParseError::Int(err)
-    }
-}
-
-impl From<ParseFloatError> for NumberParseError {
-    fn from(err: ParseFloatError) -> Self {
-        NumberParseError::Float(err)
-    }
-}
-
 fn parse_number(num_str: &str) -> Result<Expr, NumberParseError> {
     num_str
         .parse::<i64>()
@@ -106,13 +100,6 @@ pub fn eval(expr: &Expr) -> Result<f64, &'static str> {
     }
 }
 
-impl fmt::Display for Expr {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // Implement the conversion of an expression to a string.
-        write!(f, "{:?}", self)
-    }
-}
-
 pub struct Compiler<'a, 'ctx> {
     pub context: &'ctx Context,
     pub builder: &'a Builder<'ctx>,
@@ -123,6 +110,11 @@ pub struct Compiler<'a, 'ctx> {
 }
 
 impl<'a, 'ctx> Compiler<'a, 'ctx> {
+    #[inline]
+    fn get_function(&self, name: &str) -> Option<FunctionValue<'ctx>> {
+        self.module.get_function(name)
+    }
+
     fn compile_expr(&mut self, expr: &Expr) -> Result<FloatValue<'ctx>, &'static str> {
         match *expr {
             Expr::Float(nb) => Ok(self.context.f64_type().const_float(nb)),
@@ -135,26 +127,48 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                 None => Err("Could not find a matching variable."),
             },
             Expr::List(ref exprs) => {
-                if exprs.len() < 2 {
-                    return Err("Too few arguments for a binary operation.");
-                }
-
-                let op = match exprs[0] {
-                    Expr::Symbol(ref op) => op.as_str(),
-                    _ => return Err("Expected a binary operator."),
+                let op = match &exprs[0] {
+                    Expr::Symbol(op) => op.as_str(),
+                    _ => {
+                        // let error_msg = format!("Expected operator, got {:?}", exprs[0].clone());
+                        return Err("expected operator");
+                    }
                 };
 
-                let lhs = self.compile_expr(&exprs[1])?;
-                let rhs = self.compile_expr(&exprs[2])?;
+                let args: Result<Vec<_>, _> = exprs[1..]
+                    .iter()
+                    .map(|expr| self.compile_expr(expr))
+                    .collect();
 
-                match op {
-                    "+" => Ok(self.builder.build_float_add(lhs, rhs, "tmpadd")),
-                    "-" => Ok(self.builder.build_float_sub(lhs, rhs, "tmpsub")),
-                    "*" => Ok(self.builder.build_float_mul(lhs, rhs, "tmpmul")),
-                    "/" => Ok(self.builder.build_float_div(lhs, rhs, "tmpdiv")),
-                    _ => Err("Unknown binary operator."),
+                // println!("variables: {:?}", self.variables);
+
+                let result = match args {
+                    Ok(compiled_args) => match op {
+                        "+" => compiled_args
+                            .into_iter()
+                            .reduce(|lhs, rhs| self.builder.build_float_add(lhs, rhs, "tmpadd")),
+                        "-" => compiled_args
+                            .into_iter()
+                            .reduce(|lhs, rhs| self.builder.build_float_sub(lhs, rhs, "tmpsub")),
+                        "*" => compiled_args
+                            .into_iter()
+                            .reduce(|lhs, rhs| self.builder.build_float_mul(lhs, rhs, "tmpmul")),
+                        "/" => compiled_args
+                            .into_iter()
+                            .reduce(|lhs, rhs| self.builder.build_float_div(lhs, rhs, "tmpdiv")),
+                        _ => return Err("Unknown binary operator."),
+                    },
+                    Err(err) => {
+                        return Err("idk");
+                    }
+                };
+
+                match result {
+                    Some(res) => Ok(res),
+                    None => Err("Insufficient arguments for the operator."),
                 }
             }
+            _ => Err("Unknown expression."),
         }
     }
 
@@ -173,5 +187,29 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         };
 
         compiler.compile_expr(function)
+    }
+}
+
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Debug)]
+enum NumberParseError {
+    Int(ParseIntError),
+    Float(ParseFloatError),
+}
+
+impl From<ParseIntError> for NumberParseError {
+    fn from(err: ParseIntError) -> Self {
+        NumberParseError::Int(err)
+    }
+}
+
+impl From<ParseFloatError> for NumberParseError {
+    fn from(err: ParseFloatError) -> Self {
+        NumberParseError::Float(err)
     }
 }
