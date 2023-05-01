@@ -6,6 +6,9 @@ use rustyline::history::History;
 use rustyline::validate::MatchingBracketValidator;
 use rustyline::{Cmd, Editor, EventHandler, KeyCode, KeyEvent, Modifiers};
 use rustyline::{Completer, Helper, Highlighter, Hinter, Validator};
+use std::collections::HashMap;
+use std::path::Path;
+
 #[derive(Completer, Helper, Highlighter, Hinter, Validator)]
 struct InputValidator {
     #[rustyline(Validator)]
@@ -29,6 +32,7 @@ fn main() -> Result<(), ReadlineError> {
     let h = InputValidator {
         brackets: MatchingBracketValidator::new(),
     };
+
     let mut rl = Editor::new()?;
     rl.set_helper(Some(h));
 
@@ -36,6 +40,13 @@ fn main() -> Result<(), ReadlineError> {
         KeyEvent(KeyCode::Enter, Modifiers::ALT),
         EventHandler::Simple(Cmd::Newline),
     );
+
+    let history_path = "history.txt";
+
+    // Load history from the history file if it exists
+    if Path::new(history_path).exists() {
+        rl.load_history(history_path)?;
+    }
 
     let context = Context::create();
     let module = context.create_module("repl");
@@ -48,7 +59,7 @@ fn main() -> Result<(), ReadlineError> {
         let readline = rl.readline(prompt_str.as_str());
         match readline {
             Ok(line) => {
-                rl.add_history_entry(line.as_str());
+                rl.add_history_entry(line.as_str())?;
                 match read(&line) {
                     Ok(expr) => {
                         // for (index, prev) in previous_exprs.iter().enumerate() {

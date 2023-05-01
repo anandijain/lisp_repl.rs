@@ -1,3 +1,4 @@
+#[warn(unused_imports)]
 use inkwell::{
     builder::Builder,
     context::Context,
@@ -6,6 +7,10 @@ use inkwell::{
     types::{BasicMetadataTypeEnum, BasicTypeEnum},
     values::{BasicMetadataValueEnum, BasicValueEnum, FloatValue, FunctionValue, PointerValue},
     FloatPredicate,
+};
+use inkwell::{
+    values::{AnyValue, BasicValue, GenericValue},
+    OptimizationLevel,
 };
 use peg::{error::ParseError, parser};
 use std::{
@@ -18,29 +23,10 @@ use std::{
     str::Chars,
 };
 
-// mod compiler;
-// (define fact
-//     (lambda (n)
-//       (if (< n 2)
-//           1
-//           (* n (fact (- n 1))))))
+use std::error::Error;
+
 parser! {
     grammar lisp_parser() for str {
-        // viz
-        // rule traced<T>(e: rule<T>) -> T =
-        //     &(input:$([_]*) {
-        //         #[cfg(feature = "trace")]
-        //         println!("[PEG_INPUT_START]\n{}\n[PEG_TRACE_START]", input);
-        //     })
-        //     e:e()? {?
-        //         #[cfg(feature = "trace")]
-        //         println!("[PEG_TRACE_STOP]");
-        //         e.ok_or("")
-        //     }
-
-        // pub rule toplevel() -> Toplevel = traced(<toplevel0()>)
-
-        // actual grammar
         pub rule expr() -> Expr
             = _ e:(
                 number()
@@ -53,7 +39,7 @@ parser! {
 
         rule symbol() -> Expr
             = s:$(['a'..='z' | 'A'..='Z' | '-' | '_' | '+' | '*' | '/' | '?' | '!' | '@' | '#' | '$' | '%' | '&' | '|' | '<' | '>' | '=' | ':' | '"']
-                    ['a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '+' | '*' | '/' | '?' | '!' | '@' | '#' | '$' | '%' | '&' | '|' | '<' | '>' | '=' | ':']*  )
+                    ['a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '+' | '*' | '/' | '?' | '!' | '@' | '#' | '$' | '%' | '&' | '|' | '<' | '>' | '=' | ':' | '.' ]*  )
                 { Expr::Symbol(s.into()) }
 
         rule list() -> Expr
@@ -106,7 +92,7 @@ pub struct Compiler<'a, 'ctx> {
     pub module: &'a Module<'ctx>,
     pub function: &'a Expr,
 
-    variables: HashMap<String, PointerValue<'ctx>>,
+    pub variables: HashMap<String, PointerValue<'ctx>>,
 }
 
 impl<'a, 'ctx> Compiler<'a, 'ctx> {
@@ -119,13 +105,58 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         match *expr {
             Expr::Float(nb) => Ok(self.context.f64_type().const_float(nb)),
             Expr::Integer(nb) => Ok(self.context.f64_type().const_float(nb as f64)),
-            Expr::Symbol(ref name) => match self.variables.get(name.as_str()) {
-                Some(var) => Ok(self
-                    .builder
-                    .build_load(*var, name.as_str())
-                    .into_float_value()),
-                None => Err("Could not find a matching variable."),
-            },
+            Expr::Symbol(ref name) => {
+                let x = name.clone().to_owned();
+                if let Some(func) = self.get_function(name.as_str()) {
+                    // If the symbol is a defined function, generate a call
+                    let arg_types: Vec<_> = func
+                        .get_type()
+                        .get_param_types()
+                        .iter()
+                        .map(|t| *t)
+                        .collect();
+                    let args: Vec<_> = arg_types
+                        .iter()
+                        .map(|t| match t {
+                            BasicTypeEnum::FloatType(_) => BasicMetadataValueEnum::FloatValue(
+                                self.context.f64_type().const_zero(),
+                            ),
+                            BasicTypeEnum::IntType(_) => BasicMetadataValueEnum::IntValue(
+                                self.context.i32_type().const_zero(),
+                            ),
+                            // Add other types here as needed.
+                            _ => unimplemented!(), // Return an error or handle other types if necessary
+                        })
+                        .collect();
+                    Ok(self
+                        .builder
+                        .build_call(
+                            func,
+                            args.as_slice(),
+                            // &args,
+                            "tmpcall",
+                        )
+                        .try_as_basic_value()
+                        .left()
+                        .unwrap()
+                        .into_float_value())
+                } else {
+                    match self.variables.get(name.as_str()) {
+                        Some(var) => Ok(self
+                            .builder
+                            .build_load(*var, name.as_str())
+                            .into_float_value()),
+                        None => {
+                            // let mut error_message =
+                            // format!("Could not find a matching variable: {:?}.", x).to_owned();
+                            // println!("{}", error_message);
+                            // Err(&mut error_message)
+                            return Err("Could not find a matching variable");
+                            // Err(error_message)
+                        }
+                    }
+                }
+            }
             Expr::List(ref exprs) => {
                 let op = match &exprs[0] {
                     Expr::Symbol(op) => op.as_str(),
@@ -156,12 +187,50 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                         "/" => compiled_args
                             .into_iter()
                             .reduce(|lhs, rhs| self.builder.build_float_div(lhs, rhs, "tmpdiv")),
-                        _ => return Err("Unknown binary operator."),
+                        "%" => compiled_args
+                            .into_iter()
+                            .reduce(|lhs, rhs| self.builder.build_float_rem(lhs, rhs, "tmprem")),
+                        _ => {
+                            if let Some(intrinsic) = inkwell::intrinsics::Intrinsic::find(op) {
+                                let arg_types: Vec<inkwell::types::BasicTypeEnum> = compiled_args
+                                    .clone()
+                                    .iter()
+                                    .map(|arg| arg.get_type().into())
+                                    .collect();
+
+                                let args_metadata: Vec<inkwell::values::BasicMetadataValueEnum> =
+                                    compiled_args
+                                        .clone()
+                                        .into_iter()
+                                        .map(|arg| arg.into())
+                                        .collect();
+
+                                let intrinsic_function = intrinsic
+                                    .get_declaration(&self.module, arg_types.as_slice())
+                                    .unwrap();
+
+                                let ret_val = self
+                                    .builder
+                                    .build_call(
+                                        intrinsic_function,
+                                        args_metadata.as_slice(),
+                                        "call",
+                                    )
+                                    .try_as_basic_value()
+                                    .left()
+                                    .unwrap();
+
+                                Some(ret_val.into_float_value())
+                            } else {
+                                return Err("Unknown operator/intrinsic");
+                            }
+                        }
                     },
                     Err(err) => {
-                        return Err("idk");
+                        return Err(err);
                     }
                 };
+                println!("result: {:?}", result);
 
                 match result {
                     Some(res) => Ok(res),
