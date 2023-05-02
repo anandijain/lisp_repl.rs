@@ -1,6 +1,6 @@
 use inkwell::context::Context;
+use inkwell::passes::PassManager;
 use lisp_repl::*;
-use rug::{Float, Integer, Rational};
 use rustyline::error::ReadlineError;
 use rustyline::history::History;
 use rustyline::validate::MatchingBracketValidator;
@@ -51,10 +51,22 @@ fn main() -> Result<(), ReadlineError> {
     let context = Context::create();
     let module = context.create_module("repl");
     let builder = context.create_builder();
+    let fpm = PassManager::create(&module);
+    let mut global_scope = HashMap::new();
+    fpm.initialize();
+
+    // let mut compiler = Compiler {
+    //     context: &context,
+    //     builder: &builder,
+    //     fpm: &fpm,
+    //     module: &module,
+    //     expr: &Expr::List(vec![]),
+        // global_scope: &mut global_scope,
+    // };
     let mut previous_exprs = Vec::new();
 
     loop {
-        let prompt_str = format! {"[%{}]>> ", rl.history().len().to_string()};
+        let prompt_str = format! {"mylisp[%{}]>> ", rl.history().len().to_string()};
 
         let readline = rl.readline(prompt_str.as_str());
         match readline {
@@ -68,12 +80,25 @@ fn main() -> Result<(), ReadlineError> {
                         //     Compiler::compile(&context, &builder, &module, prev)
                         //         .expect("Cannot re-add previously compiled function.");
                         // }
+                        // compiler.expr = &expr.clone();
+                        // compiler.compile_expr(&expr);
 
                         previous_exprs.push(expr.clone());
                         if display_parser_output {
                             println!("{:?}", expr);
                         }
-                        match Compiler::compile(&context, &builder, &module, &expr) {
+                        // println!("gs{:?}", compiler.global_scope.clone());
+
+                        // match compiler.compile_expr(&expr.to_owned()) {
+                        // match Compiler::compile(
+                        //     &context,
+                        //     &builder,
+                        //     &fpm,
+                        //     &module,
+                        //     &expr,
+                        //     &mut compiler.global_scope.clone(),
+                        // ) 
+                        match Compiler::compile(&context, &builder,&fpm,  &module, &expr, &mut global_scope){
                             Ok(result) => println!("{}", result),
                             Err(err) => println!("Error: {}", err),
                         }

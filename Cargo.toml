@@ -9,7 +9,6 @@ edition = "2021"
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm12-0"] }
 # peg = { version = "0.8.1", features = ["trace"] }
 peg = { version = "0.8.1", features = [] }
-rug = "1.19.2"
 rustyline = { version = "11.0.0", features = ["custom-bindings", "derive", "with-fuzzy"] }
 
 # [features]
@@ -24,3 +23,6 @@ crate-type = ["lib"]
 name = "tests"
 path = "tests/tests.rs"
 
+
+[profile.dev]
+incremental = false

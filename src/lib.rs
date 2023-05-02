@@ -9,7 +9,8 @@ use inkwell::{
     FloatPredicate,
 };
 use inkwell::{
-    values::{AnyValue, BasicValue, GenericValue},
+    types::BasicType,
+    values::{AnyValue, AnyValueEnum, BasicValue, GenericValue},
     OptimizationLevel,
 };
 use peg::{error::ParseError, parser};
@@ -74,191 +75,6 @@ pub fn read(input: &str) -> Result<Expr, String> {
     lisp_parser::expr(input).map_err(|e| e.to_string())
 }
 
-pub fn eval(expr: &Expr) -> Result<f64, &'static str> {
-    let context = Context::create();
-    let module = context.create_module("repl");
-    let builder = context.create_builder();
-
-    let compiled_expr = Compiler::compile(&context, &builder, &module, expr)?;
-    match compiled_expr.get_constant() {
-        Some(x) => Ok(x.0),
-        None => Err("Expression did not evaluate to a constant."),
-    }
-}
-
-pub struct Compiler<'a, 'ctx> {
-    pub context: &'ctx Context,
-    pub builder: &'a Builder<'ctx>,
-    pub module: &'a Module<'ctx>,
-    pub function: &'a Expr,
-
-    pub variables: HashMap<String, PointerValue<'ctx>>,
-}
-
-impl<'a, 'ctx> Compiler<'a, 'ctx> {
-    #[inline]
-    fn get_function(&self, name: &str) -> Option<FunctionValue<'ctx>> {
-        self.module.get_function(name)
-    }
-
-    fn compile_expr(&mut self, expr: &Expr) -> Result<FloatValue<'ctx>, &'static str> {
-        match *expr {
-            Expr::Float(nb) => Ok(self.context.f64_type().const_float(nb)),
-            Expr::Integer(nb) => Ok(self.context.f64_type().const_float(nb as f64)),
-            Expr::Symbol(ref name) => {
-                let x = name.clone().to_owned();
-                if let Some(func) = self.get_function(name.as_str()) {
-                    // If the symbol is a defined function, generate a call
-                    let arg_types: Vec<_> = func
-                        .get_type()
-                        .get_param_types()
-                        .iter()
-                        .map(|t| *t)
-                        .collect();
-                    let args: Vec<_> = arg_types
-                        .iter()
-                        .map(|t| match t {
-                            BasicTypeEnum::FloatType(_) => BasicMetadataValueEnum::FloatValue(
-                                self.context.f64_type().const_zero(),
-                            ),
-                            BasicTypeEnum::IntType(_) => BasicMetadataValueEnum::IntValue(
-                                self.context.i32_type().const_zero(),
-                            ),
-                            // Add other types here as needed.
-                            _ => unimplemented!(), // Return an error or handle other types if necessary
-                        })
-                        .collect();
-                    Ok(self
-                        .builder
-                        .build_call(
-                            func,
-                            args.as_slice(),
-                            // &args,
-                            "tmpcall",
-                        )
-                        .try_as_basic_value()
-                        .left()
-                        .unwrap()
-                        .into_float_value())
-                } else {
-                    match self.variables.get(name.as_str()) {
-                        Some(var) => Ok(self
-                            .builder
-                            .build_load(*var, name.as_str())
-                            .into_float_value()),
-                        None => {
-                            // let mut error_message =
-                            // format!("Could not find a matching variable: {:?}.", x).to_owned();
-                            // println!("{}", error_message);
-                            // Err(&mut error_message)
-                            return Err("Could not find a matching variable");
-                            // Err(error_message)
-                        }
-                    }
-                }
-            }
-            Expr::List(ref exprs) => {
-                let op = match &exprs[0] {
-                    Expr::Symbol(op) => op.as_str(),
-                    _ => {
-                        // let error_msg = format!("Expected operator, got {:?}", exprs[0].clone());
-                        return Err("expected operator");
-                    }
-                };
-
-                let args: Result<Vec<_>, _> = exprs[1..]
-                    .iter()
-                    .map(|expr| self.compile_expr(expr))
-                    .collect();
-
-                // println!("variables: {:?}", self.variables);
-
-                let result = match args {
-                    Ok(compiled_args) => match op {
-                        "+" => compiled_args
-                            .into_iter()
-                            .reduce(|lhs, rhs| self.builder.build_float_add(lhs, rhs, "tmpadd")),
-                        "-" => compiled_args
-                            .into_iter()
-                            .reduce(|lhs, rhs| self.builder.build_float_sub(lhs, rhs, "tmpsub")),
-                        "*" => compiled_args
-                            .into_iter()
-                            .reduce(|lhs, rhs| self.builder.build_float_mul(lhs, rhs, "tmpmul")),
-                        "/" => compiled_args
-                            .into_iter()
-                            .reduce(|lhs, rhs| self.builder.build_float_div(lhs, rhs, "tmpdiv")),
-                        "%" => compiled_args
-                            .into_iter()
-                            .reduce(|lhs, rhs| self.builder.build_float_rem(lhs, rhs, "tmprem")),
-                        _ => {
-                            if let Some(intrinsic) = inkwell::intrinsics::Intrinsic::find(op) {
-                                let arg_types: Vec<inkwell::types::BasicTypeEnum> = compiled_args
-                                    .clone()
-                                    .iter()
-                                    .map(|arg| arg.get_type().into())
-                                    .collect();
-
-                                let args_metadata: Vec<inkwell::values::BasicMetadataValueEnum> =
-                                    compiled_args
-                                        .clone()
-                                        .into_iter()
-                                        .map(|arg| arg.into())
-                                        .collect();
-
-                                let intrinsic_function = intrinsic
-                                    .get_declaration(&self.module, arg_types.as_slice())
-                                    .unwrap();
-
-                                let ret_val = self
-                                    .builder
-                                    .build_call(
-                                        intrinsic_function,
-                                        args_metadata.as_slice(),
-                                        "call",
-                                    )
-                                    .try_as_basic_value()
-                                    .left()
-                                    .unwrap();
-
-                                Some(ret_val.into_float_value())
-                            } else {
-                                return Err("Unknown operator/intrinsic");
-                            }
-                        }
-                    },
-                    Err(err) => {
-                        return Err(err);
-                    }
-                };
-                println!("result: {:?}", result);
-
-                match result {
-                    Some(res) => Ok(res),
-                    None => Err("Insufficient arguments for the operator."),
-                }
-            }
-            _ => Err("Unknown expression."),
-        }
-    }
-
-    pub fn compile(
-        context: &'ctx Context,
-        builder: &'a Builder<'ctx>,
-        module: &'a Module<'ctx>,
-        function: &Expr,
-    ) -> Result<FloatValue<'ctx>, &'static str> {
-        let mut compiler = Compiler {
-            context,
-            builder,
-            module,
-            function,
-            variables: HashMap::new(),
-        };
-
-        compiler.compile_expr(function)
-    }
-}
-
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
@@ -280,5 +96,182 @@ impl From<ParseIntError> for NumberParseError {
 impl From<ParseFloatError> for NumberParseError {
     fn from(err: ParseFloatError) -> Self {
         NumberParseError::Float(err)
+    }
+}
+
+fn extract_op_and_args<'a>(exprs: &'a [Expr]) -> Result<(&'a str, &'a [Expr]), &'static str> {
+    match exprs.split_first() {
+        Some((Expr::Symbol(op), args)) => Ok((op.as_str(), args)),
+        _ => Err("expected operator"),
+    }
+}
+
+pub struct Compiler<'a, 'ctx> {
+    pub context: &'ctx Context,
+    pub builder: &'a Builder<'ctx>,
+    pub fpm: &'a PassManager<FunctionValue<'ctx>>,
+    pub module: &'a Module<'ctx>,
+    pub expr: &'a Expr,
+    // scopes: Vec<HashMap<String, FloatValue<'ctx>>>,
+    pub global_scope: &'a mut HashMap<String, FloatValue<'ctx>>,
+}
+
+impl<'a, 'ctx> Compiler<'a, 'ctx> {
+    /// Gets a defined function given its name.
+    #[inline]
+    fn get_function(&self, name: &str) -> Option<FunctionValue<'ctx>> {
+        self.module.get_function(name)
+    }
+
+    // fn lookup_variable(&self, var_name: &str) -> Option<&FloatValue<'ctx>> {
+    //     for scope in self.scopes.iter().rev() {
+    //         if let Some(value) = scope.get(var_name) {
+    //             return Some(value);
+    //         }
+    //     }
+    //     None
+    // }
+
+    /// Compiles the specified `Expr` into an LLVM `FloatValue`.
+    pub fn compile_expr(&mut self, expr: &'a Expr) -> Result<FloatValue<'ctx>, &'static str> {
+        match expr {
+            Expr::Float(nb) => Ok(self.context.f64_type().const_float(*nb)),
+            Expr::Integer(nb) => Ok(self.context.f64_type().const_float(*nb as f64)),
+            Expr::Symbol(ref name) => match self.global_scope.get(name.as_str()) {
+                Some(value) => Ok(*value),
+                None => Err("Could not find a matching variable."),
+            },
+            Expr::List(ref exprs) => {
+                let (op, args) = extract_op_and_args(exprs)?;
+
+                match op {
+                    "define" => {
+                        if args.len() != 2 {
+                            return Err("define requires a variable name or function definition and a value or expression.");
+                        }
+
+                        if let Expr::List(func_def) = &args[0] {
+                            if func_def.len() < 1 {
+                                return Err("Function definition should have a name and may have parameters.");
+                            }
+
+                            if let Expr::Symbol(func_name) = &func_def[0] {
+                                let arg_names: Vec<String> = func_def
+                                    .iter()
+                                    .skip(1)
+                                    .filter_map(|arg| match arg {
+                                        Expr::Symbol(s) => Some(s.to_string()),
+                                        _ => None,
+                                    })
+                                    .collect();
+                                let arity = arg_names.len();
+
+                                if arity != func_def.len() - 1 {
+                                    return Err("Function arguments should be symbols.");
+                                }
+                                let arg_types = self.context.f64_type();
+                                // arg_names.len();
+                                // let bmte2 = Into::<BasicMetadataTypeEnum>::into(arg_types.as_basic_type_enum());
+                                let bmte = BasicMetadataTypeEnum::FloatType(arg_types);
+                                let v = vec![bmte; arg_names.len()];
+                                let func_type = self.context.f64_type().fn_type(
+                                    v.as_slice(),
+                                    // &[self.context.f64_type().into(); arg_names.len()][..],
+                                    false,
+                                );
+                                let func_value =
+                                    self.module.add_function(func_name, func_type, None);
+
+                                let basic_block =
+                                    self.context.append_basic_block(func_value, "entry");
+                                self.builder.position_at_end(basic_block);
+
+                                // Create a new scope for function arguments
+                                let mut arg_scope = HashMap::new();
+                                for (i, &ref arg_name) in arg_names.iter().enumerate() {
+                                    let param = func_value
+                                        .get_nth_param(i as u32)
+                                        .unwrap()
+                                        .into_float_value();
+                                    arg_scope.insert(arg_name.to_string(), param);
+                                }
+
+                                // Push local scope on the scopes stack
+                                // self.scopes.push(arg_scope);
+
+                                let body = self.compile_expr(&args[1])?;
+                                self.builder.build_return(Some(&body));
+
+                                // Pop local scope from the stack
+                                // self.scopes.pop();
+
+                                Ok(body)
+                            } else {
+                                Err("Function definition should start with a symbol for its name.")
+                            }
+                        } else {
+                            // Handle the define variable case
+                            if let Expr::Symbol(var_name) = &args[0] {
+                                let value = self.compile_expr(&args[1])?;
+                                self.global_scope.insert(var_name.clone(), value);
+                                Ok(value)
+                            } else {
+                                Err("define requires a variable name to be a symbol.")
+                            }
+                        }
+                    }
+
+                    "+" => Ok(self.builder.build_float_add(
+                        self.compile_expr(&args[0])?,
+                        self.compile_expr(&args[1])?,
+                        "tmpadd",
+                    )),
+                    "-" => Ok(self.builder.build_float_sub(
+                        self.compile_expr(&args[0])?,
+                        self.compile_expr(&args[1])?,
+                        "tmpsub",
+                    )),
+                    "*" => Ok(self.builder.build_float_mul(
+                        self.compile_expr(&args[0])?,
+                        self.compile_expr(&args[1])?,
+                        "tmpmul",
+                    )),
+                    "/" => Ok(self.builder.build_float_div(
+                        self.compile_expr(&args[0])?,
+                        self.compile_expr(&args[1])?,
+                        "tmpdiv",
+                    )),
+                    // "-" => Ok(self.builder.build_float_sub(lhs, rhs, "tmpsub")),
+                    // "*" => Ok(self.builder.build_float_mul(lhs, rhs, "tmpmul")),
+                    // "/" => Ok(self.builder.build_float_div(lhs, rhs, "tmpdiv")),
+                    _ => {
+                        // Handle other operators/funcs, e.g. (+ x y)
+                        // or custom functions if you plan to support them.
+                        Err("Not implemented!")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Compiles the specified `Function` in the given `Context` and using the specified `Builder`, `PassManager`, and `Module`.
+    pub fn compile(
+        context: &'ctx Context,
+        builder: &'a Builder<'ctx>,
+        pass_manager: &'a PassManager<FunctionValue<'ctx>>,
+        module: &'a Module<'ctx>,
+        expr: &Expr,
+        global_scope: &'a mut HashMap<String, FloatValue<'ctx>>,
+    ) -> Result<FloatValue<'ctx>, &'static str> {
+        let mut compiler = Compiler {
+            context,
+            builder,
+            fpm: pass_manager,
+            module,
+            expr,
+            global_scope, // scopes: vec![global_scope],
+        };
+        // Directly call the modified compile_expr method
+        compiler.compile_expr(expr)
     }
 }
