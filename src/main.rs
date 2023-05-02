@@ -1,5 +1,6 @@
 use inkwell::context::Context;
 use inkwell::passes::PassManager;
+use inkwell::OptimizationLevel;
 use lisp_repl::*;
 use rustyline::error::ReadlineError;
 use rustyline::history::History;
@@ -54,17 +55,45 @@ fn main() -> Result<(), ReadlineError> {
     let fpm = PassManager::create(&module);
     let mut global_scope = HashMap::new();
     fpm.initialize();
-
-    // let mut compiler = Compiler {
-    //     context: &context,
-    //     builder: &builder,
-    //     fpm: &fpm,
-    //     module: &module,
-    //     expr: &Expr::List(vec![]),
-        // global_scope: &mut global_scope,
-    // };
     let mut previous_exprs = Vec::new();
 
+    let result = Compiler::compile(
+        &context,
+        &builder,
+        &fpm,
+        &module,
+        &read("(define (square x) (* x x))").unwrap(),
+        &mut global_scope,
+    );
+    println!("{:?}\n\n", result);
+    println!("{}", module.print_to_string().to_string());
+
+    let ee = module
+        .create_jit_execution_engine(OptimizationLevel::None)
+        .unwrap();
+    println!("ee: {:#?}", ee);
+    let sq = unsafe { ee.get_function::<unsafe extern "C" fn(f64) -> f64>("square").ok() }.unwrap();
+
+    // let maybe_fn = unsafe { ee.get_function::<unsafe extern "C" fn(f64) -> f64>("name") };
+    // let compiled_fn = match maybe_fn {
+        // Ok(f) => f,
+        // Err(err) => panic!()
+            // Err("")
+            // println!("!> Error during execution: {:?}", err);
+            // continue;
+        // }
+    // };
+
+    unsafe {
+        println!("=> {}", sq.call(3.0));
+    }
+
+    // println!(r"{}", module.to_string());
+    // println!("{:#?}", module
+    // module.
+    // let module_string = "; ModuleID = 'repl'\nsource_filename = \"repl\"\n\ndefine double @square(double %x) {\nentry:\n  %x1 = alloca double, align 8\n  store double %x, double* %x1, align 8\n}\n";
+
+    // println!("{}", module_string);
     loop {
         let prompt_str = format! {"mylisp[%{}]>> ", rl.history().len().to_string()};
 
@@ -97,9 +126,42 @@ fn main() -> Result<(), ReadlineError> {
                         //     &module,
                         //     &expr,
                         //     &mut compiler.global_scope.clone(),
-                        // ) 
-                        match Compiler::compile(&context, &builder,&fpm,  &module, &expr, &mut global_scope){
-                            Ok(result) => println!("{}", result),
+                        // )
+                        match Compiler::compile(
+                            &context,
+                            &builder,
+                            &fpm,
+                            &module,
+                            &expr,
+                            &mut global_scope,
+                        ) {
+                            Ok(result) => {
+                                // if is_anonymous {
+                                // let ee = module
+                                //     .create_jit_execution_engine(OptimizationLevel::None)
+                                //     .unwrap();
+
+                                // let maybe_fn = unsafe {
+                                //     ee.get_function::<unsafe extern "C" fn() -> f64>("anonymous")
+                                // };
+
+                                // let compiled_fn = match maybe_fn {
+                                //     Ok(f) => f,
+                                //     Err(err) => {
+                                //         println!("!> Error during execution: {:?}", err);
+                                //         continue;
+                                //     }
+                                // };
+
+                                // unsafe {
+                                //     println!("CALL=> {}", compiled_fn.call());
+                                // }
+                                // }
+                                // println!("{}\n\n{}", result, module.print_to_string());
+                                println!("{:?}\n\n", result);
+                                println!("{}", module.to_string());
+                            }
+
                             Err(err) => println!("Error: {}", err),
                         }
                     }
