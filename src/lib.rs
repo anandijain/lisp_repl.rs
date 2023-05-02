@@ -267,13 +267,13 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                                 // update fn field
                                 self.fn_value_opt = Some(function);
 
-
                                 let alloca = self.create_entry_block_alloca(var_name);
 
                                 self.builder.build_store(alloca, value);
 
                                 self.global_scope.insert(var_name.clone(), alloca);
-                                self.builder.build_return(Some(&value.as_basic_value_enum()));
+                                self.builder
+                                    .build_return(Some(&value.as_basic_value_enum()));
                                 // let alloca = self.create_entry_block_alloca(var_name);
 
                                 // self.builder.build_store(alloca, initial_val);
@@ -284,69 +284,117 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                             }
                         }
                     }
-                    // i think in all the cases below this we want to compile a prototype and anonymous function with zero args. 
-                    "+" => Ok(self.builder.build_float_add(
-                        self.compile_expr(&args[0])?,
-                        self.compile_expr(&args[1])?,
-                        "tmpadd",
-                    )),
-                    "-" => Ok(self.builder.build_float_sub(
-                        self.compile_expr(&args[0])?,
-                        self.compile_expr(&args[1])?,
-                        "tmpsub",
-                    )),
-                    "*" => Ok(self.builder.build_float_mul(
-                        self.compile_expr(&args[0])?,
-                        self.compile_expr(&args[1])?,
-                        "tmpmul",
-                    )),
-                    "/" => Ok(self.builder.build_float_div(
-                        self.compile_expr(&args[0])?,
-                        self.compile_expr(&args[1])?,
-                        "tmpdiv",
-                    )),
+                    // i think in all the cases below this we want to compile a prototype and anonymous function with zero args.
+                    // "+" => Ok(self.builder.build_float_add(
+                    //     self.compile_expr(&args[0])?,
+                    //     self.compile_expr(&args[1])?,
+                    //     "tmpadd",
+                    // )),
+                    // "-" => Ok(self.builder.build_float_sub(
+                    //     self.compile_expr(&args[0])?,
+                    //     self.compile_expr(&args[1])?,
+                    //     "tmpsub",
+                    // )),
+                    // "*" => Ok(self.builder.build_float_mul(
+                    //     self.compile_expr(&args[0])?,
+                    //     self.compile_expr(&args[1])?,
+                    //     "tmpmul",
+                    // )),
+                    // "/" => Ok(self.builder.build_float_div(
+                    //     self.compile_expr(&args[0])?,
+                    //     self.compile_expr(&args[1])?,
+                    //     "tmpdiv",
+                    // )),
                     // "-" => Ok(self.builder.build_float_sub(lhs, rhs, "tmpsub")),
                     // "*" => Ok(self.builder.build_float_mul(lhs, rhs, "tmpmul")),
                     // "/" => Ok(self.builder.build_float_div(lhs, rhs, "tmpdiv")),
                     _ => {
-                        // (square 2)
-                        match self.module.get_function(op) {
-                            Some(f) => {
-                                let function = self.compile_prototype("anon", vec![])?;
+                        let compiled_args: Result<Vec<FloatValue<'ctx>>, _> =
+                            args.into_iter().map(|arg| self.compile_expr(arg)).collect();
+                        match compiled_args {
+                            Ok(compiled_args) => {
+                                match op {
+                                    "+" => {
+                                        match compiled_args.into_iter().reduce(|lhs, rhs| {
+                                            self.builder.build_float_add(lhs, rhs, "tmpadd")
+                                        }) {
+                                            Some(result) => Ok(result),
+                                            None => Err("Error: Addition requires at least one argument."),
+                                        }
+                                    },
+                                    "-" => {
+                                        match compiled_args.into_iter().reduce(|lhs, rhs| {
+                                            self.builder.build_float_sub(lhs, rhs, "tmpsub")
+                                        }) {
+                                            Some(result) => Ok(result),
+                                            None => Err("Error: Subtraction requires at least one argument."),
+                                        }
+                                    },
+                                    "*" => {
+                                        match compiled_args.into_iter().reduce(|lhs, rhs| {
+                                            self.builder.build_float_mul(lhs, rhs, "tmpmul")
+                                        }) {
+                                            Some(result) => Ok(result),
+                                            None => Err("Error: Multiplication requires at least one argument."),
+                                        }
+                                    },
+                                    "/" => {
+                                        match compiled_args.into_iter().reduce(|lhs, rhs| {
+                                            self.builder.build_float_div(lhs, rhs, "tmpdiv")
+                                        }) {
+                                            Some(result) => Ok(result),
+                                            None => Err("Error: Division requires at least one argument."),
+                                        }
+                                    },
+                                    _ => {
+                                        // (square 2)
 
-                                let entry = self.context.append_basic_block(function, "entry");
+                                        match self.module.get_function(op) {
+                                            Some(f) => {
+                                                let function =
+                                                    self.compile_prototype("anon", vec![])?;
 
-                                self.builder.position_at_end(entry);
+                                                let entry = self
+                                                    .context
+                                                    .append_basic_block(function, "entry");
 
-                                // update fn field
-                                self.fn_value_opt = Some(function);
+                                                self.builder.position_at_end(entry);
 
+                                                // update fn field
+                                                self.fn_value_opt = Some(function);
 
-                                // self.builder.build_return(Some(&value.as_basic_value_enum()));
-                                
-                                let mut compiled_args = vec![];
+                                                // self.builder.build_return(Some(&value.as_basic_value_enum()));
 
-                                for arg in args.iter() {
-                                    let foo = BasicMetadataValueEnum::FloatValue(
-                                        self.compile_expr(arg).unwrap(),
-                                    );
-                                    compiled_args.push(foo);
+                                                let mut compiled_args = vec![];
+
+                                                for arg in args.iter() {
+                                                    let foo = BasicMetadataValueEnum::FloatValue(
+                                                        self.compile_expr(arg).unwrap(),
+                                                    );
+                                                    compiled_args.push(foo);
+                                                }
+                                                let body = self
+                                                    .builder
+                                                    .build_call(
+                                                        f,
+                                                        compiled_args.as_slice(),
+                                                        "tmpcall",
+                                                    )
+                                                    .try_as_basic_value()
+                                                    .left()
+                                                    .unwrap()
+                                                    .into_float_value();
+
+                                                self.builder.build_return(Some(&body));
+                                                return Ok(body);
+                                            }
+                                            None => Err("no function found with that name"),
+                                        }
+                                    }
                                 }
-                                let body = self
-                                .builder
-                                .build_call(f, compiled_args.as_slice(), "tmpcall")
-                                .try_as_basic_value()
-                                .left()
-                                .unwrap()
-                                .into_float_value();
-                                self.builder.build_return(Some(&body.as_basic_value_enum()));
-                                return Ok(body);
                             }
-                            None => Err("no function found with that name"),
+                            Err(err) => Err(err),
                         }
-                        // Handle other operators/funcs, e.g. (+ x y)
-                        // or custom functions if you plan to support them.
-                        // Err("Not implemented!")
                     }
                 }
             }

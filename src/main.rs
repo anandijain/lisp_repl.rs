@@ -53,8 +53,17 @@ fn main() -> Result<(), ReadlineError> {
     let module = context.create_module("repl");
     let builder = context.create_builder();
     let fpm = PassManager::create(&module);
-    let mut global_scope = HashMap::new();
+    fpm.add_instruction_combining_pass();
+    fpm.add_reassociate_pass();
+    fpm.add_gvn_pass();
+    fpm.add_cfg_simplification_pass();
+    fpm.add_basic_alias_analysis_pass();
+    fpm.add_promote_memory_to_register_pass();
+    fpm.add_instruction_combining_pass();
+    fpm.add_reassociate_pass();
     fpm.initialize();
+    let mut global_scope = HashMap::new();
+
     let mut previous_exprs = Vec::new();
 
     let result = Compiler::compile(
@@ -68,20 +77,40 @@ fn main() -> Result<(), ReadlineError> {
     println!("{:?}\n\n", result);
     println!("{}", module.print_to_string().to_string());
 
+    let result2 = Compiler::compile(
+        &context,
+        &builder,
+        &fpm,
+        &module,
+        &read("(square 2)").unwrap(),
+        &mut global_scope,
+    );
     let ee = module
         .create_jit_execution_engine(OptimizationLevel::None)
         .unwrap();
     println!("ee: {:#?}", ee);
-    let sq = unsafe { ee.get_function::<unsafe extern "C" fn(f64) -> f64>("square").ok() }.unwrap();
+    let sq = unsafe {
+        ee.get_function::<unsafe extern "C" fn(f64) -> f64>("square")
+            .ok()
+    }
+    .unwrap();
+    let maybe_fn = unsafe { ee.get_function::<unsafe extern "C" fn() -> f64>("anon") }.unwrap();
+
+    unsafe {
+        println!(
+            "YO YO YO THE EXECUTION ENGINE GOT: {:?}\n\n",
+            maybe_fn.call()
+        );
+    }
 
     // let maybe_fn = unsafe { ee.get_function::<unsafe extern "C" fn(f64) -> f64>("name") };
     // let compiled_fn = match maybe_fn {
-        // Ok(f) => f,
-        // Err(err) => panic!()
-            // Err("")
-            // println!("!> Error during execution: {:?}", err);
-            // continue;
-        // }
+    // Ok(f) => f,
+    // Err(err) => panic!()
+    // Err("")
+    // println!("!> Error during execution: {:?}", err);
+    // continue;
+    // }
     // };
 
     unsafe {
