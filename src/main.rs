@@ -86,9 +86,20 @@ fn main() -> Result<(), ReadlineError> {
         &read("(square 2)").unwrap(),
         &mut global_scope,
     );
+    
+    let result3 = Compiler::compile(
+        &context,
+        &builder,
+        &fpm,
+        &module,
+        &read("(llvm.abs -2)").unwrap(),
+        &mut global_scope,
+    );
+
     let ee = module
         .create_jit_execution_engine(OptimizationLevel::None)
         .unwrap();
+
     println!("ee: {:#?}", ee);
     let sq = unsafe {
         ee.get_function::<unsafe extern "C" fn(f64) -> f64>("square")
@@ -97,10 +108,14 @@ fn main() -> Result<(), ReadlineError> {
     .unwrap();
     let maybe_fn = unsafe { ee.get_function::<unsafe extern "C" fn() -> f64>("anon") }.unwrap();
 
+    // todo figure out the name mangling
+    let maybe_fn2 = unsafe { ee.get_function::<unsafe extern "C" fn() -> f64>("anon.1") }.unwrap();
+
     unsafe {
         println!(
-            "YO YO YO THE EXECUTION ENGINE GOT: {:?}\n\n",
-            maybe_fn.call()
+            "YO YO YO THE EXECUTION ENGINE GOT: {:?}\n\n and {:?}",
+            maybe_fn.call(),
+            maybe_fn2.call()
         );
     }
     println!("{:#?}", module.get_functions().collect::<Vec<_>>());

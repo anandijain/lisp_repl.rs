@@ -174,7 +174,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             },
             Expr::List(ref exprs) => {
                 let (op, args) = extract_op_and_args(exprs)?;
-                println!("{op}({:?})", args);
+                // println!("{op}({:?})", args);
                 match op {
                     "define" => {
                         if args.len() != 2 {
@@ -257,7 +257,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                                 Err("Function definition should start with a symbol for its name.")
                             }
                         } else {
-                            println!("defining a variable ");
+                            // println!("defining a variable ");
 
                             // Handle the define variable case
                             if let Expr::Symbol(var_name) = &args[0] {
@@ -269,7 +269,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                                 // };
 
                                 let value = self.compile_expr(&args[1])?;
-                                let function = self.compile_prototype(&var_name, vec![])?;
+                                let function = self.compile_prototype("anon", vec![])?;
 
                                 let entry = self.context.append_basic_block(function, "entry");
 
@@ -296,29 +296,6 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                         }
                     }
                     // i think in all the cases below this we want to compile a prototype and anonymous function with zero args.
-                    // "+" => Ok(self.builder.build_float_add(
-                    //     self.compile_expr(&args[0])?,
-                    //     self.compile_expr(&args[1])?,
-                    //     "tmpadd",
-                    // )),
-                    // "-" => Ok(self.builder.build_float_sub(
-                    //     self.compile_expr(&args[0])?,
-                    //     self.compile_expr(&args[1])?,
-                    //     "tmpsub",
-                    // )),
-                    // "*" => Ok(self.builder.build_float_mul(
-                    //     self.compile_expr(&args[0])?,
-                    //     self.compile_expr(&args[1])?,
-                    //     "tmpmul",
-                    // )),
-                    // "/" => Ok(self.builder.build_float_div(
-                    //     self.compile_expr(&args[0])?,
-                    //     self.compile_expr(&args[1])?,
-                    //     "tmpdiv",
-                    // )),
-                    // "-" => Ok(self.builder.build_float_sub(lhs, rhs, "tmpsub")),
-                    // "*" => Ok(self.builder.build_float_mul(lhs, rhs, "tmpmul")),
-                    // "/" => Ok(self.builder.build_float_div(lhs, rhs, "tmpdiv")),
                     _ => {
                         let compiled_args: Result<Vec<FloatValue<'ctx>>, _> =
                             args.into_iter().map(|arg| self.compile_expr(arg)).collect();
@@ -467,17 +444,17 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                                                         .into_float_value();
 
                                                     self.builder.build_return(Some(&body));
-
+                                                    Ok(body)
                                                     // Verify and optimize the generated function
-                                                    if function.verify(true) {
-                                                        self.fpm.run_on(&function);
-                                                        Ok(body)
-                                                    } else {
-                                                        unsafe {
-                                                            function.delete();
-                                                        }
-                                                        Err("Invalid generated function.")
-                                                    }
+                                                    // if function.verify(true) {
+                                                    //     self.fpm.run_on(&function);
+                                                    //     Ok(body)
+                                                    // } else {
+                                                    //     unsafe {
+                                                    //         function.delete();
+                                                    //     }
+                                                    //     Err("Invalid generated function.")
+                                                    // }
                                                 } else {
                                                     Err("no function found with that name")
                                                 }
