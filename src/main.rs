@@ -189,23 +189,23 @@ fn main() -> Result<(), ReadlineError> {
                                 // let ee = module
                                 //     .create_jit_execution_engine(OptimizationLevel::None)
                                 //     .unwrap();
+                                    // module.
+                                let maybe_fn = unsafe {
+                                    ee.get_function::<unsafe extern "C" fn() -> f64>("anon")
+                                };
 
-                                // let maybe_fn = unsafe {
-                                //     ee.get_function::<unsafe extern "C" fn() -> f64>("anonymous")
-                                // };
+                                let compiled_fn = match maybe_fn {
+                                    Ok(f) => f,
+                                    Err(err) => {
+                                        println!("!> Error during execution: {:?}", err);
+                                        continue;
+                                    }
+                                };
 
-                                // let compiled_fn = match maybe_fn {
-                                //     Ok(f) => f,
-                                //     Err(err) => {
-                                //         println!("!> Error during execution: {:?}", err);
-                                //         continue;
-                                //     }
-                                // };
-
-                                // unsafe {
-                                //     println!("CALL=> {}", compiled_fn.call());
-                                // }
-                                // }
+                                unsafe {
+                                    println!("CALL=> {}", compiled_fn.call());
+                                }
+                                
                                 // println!("{}\n\n{}", result, module.print_to_string());
                                 println!("{}", module.to_string());
                                 println!("{:?}\n\n", result);

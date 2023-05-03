@@ -407,7 +407,12 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                                                                 .as_slice(),
                                                         )
                                                         .unwrap();
-
+                                                    // if let Some(existing_function) = self.module.get_function("anon") {
+                                                    //     // Delete the existing function
+                                                    //     unsafe {
+                                                    //         existing_function.delete();
+                                                    //     }
+                                                    // }
                                                     // Compile the prototype and anonymous function with zero args
                                                     let function =
                                                         self.compile_prototype("anon", vec![])?;
@@ -478,6 +483,14 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         name: &str,
         arg_names: Vec<String>,
     ) -> Result<FunctionValue<'ctx>, &'static str> {
+
+        // if let Some(existing_function) = self.module.get_function(name) {
+        //     // Delete the existing function
+        //     unsafe {
+        //         existing_function.delete();
+        //     }
+        // }
+    
         let ret_type = self.context.f64_type();
         let nargs = arg_names.len();
         let args_types = std::iter::repeat(ret_type)
