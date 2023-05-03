@@ -1,4 +1,5 @@
 use inkwell::context::Context;
+use inkwell::intrinsics::Intrinsic;
 use inkwell::passes::PassManager;
 use inkwell::OptimizationLevel;
 use lisp_repl::*;
@@ -102,6 +103,10 @@ fn main() -> Result<(), ReadlineError> {
             maybe_fn.call()
         );
     }
+    println!("{:#?}", module.get_functions().collect::<Vec<_>>());
+
+    // let x = Intrinsic::find("llvm.abs");
+
 
     // let maybe_fn = unsafe { ee.get_function::<unsafe extern "C" fn(f64) -> f64>("name") };
     // let compiled_fn = match maybe_fn {
@@ -187,8 +192,8 @@ fn main() -> Result<(), ReadlineError> {
                                 // }
                                 // }
                                 // println!("{}\n\n{}", result, module.print_to_string());
-                                println!("{:?}\n\n", result);
                                 println!("{}", module.to_string());
+                                println!("{:?}\n\n", result);
                             }
 
                             Err(err) => println!("Error: {}", err),

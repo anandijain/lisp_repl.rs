@@ -160,7 +160,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             Expr::Symbol(ref name) => match self.global_scope.get(name.as_str()) {
                 // Some(value) => Ok(*value),
                 Some(var) => {
-                    println!("self.global_scope: {:?}", self.global_scope);
+                    // println!("self.global_scope: {:?}", self.global_scope);
 
                     Ok(self
                         .builder
@@ -168,7 +168,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                         .into_float_value())
                 }
                 None => {
-                    println!("self.global_scope: {:?}", self.global_scope);
+                    // println!("self.global_scope: {:?}", self.global_scope);
                     Err("Could not find a matching variable.")
                 }
             },
@@ -235,7 +235,18 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
                                 let body = self.compile_expr(&args[1])?;
                                 self.builder.build_return(Some(&body));
+                                // return the whole thing after verification and optimization
+                                if function.verify(true) {
+                                    self.fpm.run_on(&function);
 
+                                    // Ok(body)
+                                } else {
+                                    unsafe {
+                                        function.delete();
+                                    }
+
+                                    // Err("Invalid generated function.")
+                                }
                                 // self.global_scope = &mut prev_global_scope;
 
                                 // Pop local scope from the stack
@@ -319,9 +330,11 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                                             self.builder.build_float_add(lhs, rhs, "tmpadd")
                                         }) {
                                             Some(result) => Ok(result),
-                                            None => Err("Error: Addition requires at least one argument."),
+                                            None => Err(
+                                                "Error: Addition requires at least one argument.",
+                                            ),
                                         }
-                                    },
+                                    }
                                     "-" => {
                                         match compiled_args.into_iter().reduce(|lhs, rhs| {
                                             self.builder.build_float_sub(lhs, rhs, "tmpsub")
@@ -329,7 +342,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                                             Some(result) => Ok(result),
                                             None => Err("Error: Subtraction requires at least one argument."),
                                         }
-                                    },
+                                    }
                                     "*" => {
                                         match compiled_args.into_iter().reduce(|lhs, rhs| {
                                             self.builder.build_float_mul(lhs, rhs, "tmpmul")
@@ -337,15 +350,17 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                                             Some(result) => Ok(result),
                                             None => Err("Error: Multiplication requires at least one argument."),
                                         }
-                                    },
+                                    }
                                     "/" => {
                                         match compiled_args.into_iter().reduce(|lhs, rhs| {
                                             self.builder.build_float_div(lhs, rhs, "tmpdiv")
                                         }) {
                                             Some(result) => Ok(result),
-                                            None => Err("Error: Division requires at least one argument."),
+                                            None => Err(
+                                                "Error: Division requires at least one argument.",
+                                            ),
                                         }
-                                    },
+                                    }
                                     _ => {
                                         // (square 2)
 
@@ -386,9 +401,87 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                                                     .into_float_value();
 
                                                 self.builder.build_return(Some(&body));
-                                                return Ok(body);
+                                                // return the whole thing after verification and optimization
+                                                if function.verify(true) {
+                                                    self.fpm.run_on(&function);
+
+                                                    Ok(body)
+                                                } else {
+                                                    unsafe {
+                                                        function.delete();
+                                                    }
+
+                                                    Err("Invalid generated function.")
+                                                }
+                                                // return Ok(body);
                                             }
-                                            None => Err("no function found with that name"),
+                                            None => {
+                                                let intrinsic =
+                                                    inkwell::intrinsics::Intrinsic::find(op);
+                                                if let Some(found_intrinsic) = intrinsic {
+                                                    // Get double type from the context
+                                                    let double_type = self.context.f64_type();
+
+                                                    // Get the function declaration from the intrinsic
+                                                    let intrinsic_function = found_intrinsic
+                                                        .get_declaration(
+                                                            &self.module,
+                                                            vec![double_type.into(); args.len()]
+                                                                .as_slice(),
+                                                        )
+                                                        .unwrap();
+
+                                                    // Compile the prototype and anonymous function with zero args
+                                                    let function =
+                                                        self.compile_prototype("anon", vec![])?;
+
+                                                    let entry = self
+                                                        .context
+                                                        .append_basic_block(function, "entry");
+                                                    self.builder.position_at_end(entry);
+
+                                                    // Update fn_value_opt field
+                                                    self.fn_value_opt = Some(function);
+
+                                                    // Process the compiled arguments
+                                                    let mut compiled_args = vec![];
+                                                    for arg in args.iter() {
+                                                        let foo =
+                                                            BasicMetadataValueEnum::FloatValue(
+                                                                self.compile_expr(arg).unwrap(),
+                                                            );
+                                                        compiled_args.push(foo);
+                                                    }
+
+                                                    // Perform the intrinsic function call
+                                                    let body = self
+                                                        .builder
+                                                        .build_call(
+                                                            intrinsic_function,
+                                                            compiled_args.as_slice(),
+                                                            "intrinsic_call",
+                                                        )
+                                                        .try_as_basic_value()
+                                                        .left()
+                                                        .unwrap()
+                                                        .into_float_value();
+
+                                                    self.builder.build_return(Some(&body));
+
+                                                    // Verify and optimize the generated function
+                                                    if function.verify(true) {
+                                                        self.fpm.run_on(&function);
+                                                        Ok(body)
+                                                    } else {
+                                                        unsafe {
+                                                            function.delete();
+                                                        }
+                                                        Err("Invalid generated function.")
+                                                    }
+                                                } else {
+                                                    Err("no function found with that name")
+                                                }
+                                            }
                                         }
                                     }
                                 }
