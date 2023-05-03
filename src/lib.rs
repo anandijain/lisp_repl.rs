@@ -201,56 +201,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                                     return Err("Function arguments should be symbols.");
                                 }
 
-                                let function =
-                                    self.compile_prototype(func_name, arg_names.clone())?;
-
-                                let entry = self.context.append_basic_block(function, "entry");
-                                self.builder.position_at_end(entry);
-                                self.fn_value_opt = Some(function);
-
-                                // Create a new scope for function arguments
-                                // let mut arg_scope = HashMap::new();
-
-                                // for (i, &ref arg_name) in arg_names.iter().enumerate() {
-                                //     let param = function
-                                //         .get_nth_param(i as u32)
-                                //         .unwrap()
-                                //         .into_float_value();
-                                //     arg_scope.insert(arg_name.to_string(), param);
-                                // }
-
-                                // Push local scope on the scopes stack
-                                // self.scopes.push(arg_scope);
-
-                                // let mut prev_global_scope = self.global_scope.clone();
-                                // self.global_scope.extend(arg_scope.clone());
-                                for (i, arg) in function.get_param_iter().enumerate() {
-                                    // let arg_name = proto.args[i].as_str();
-                                    let alloca = self.create_entry_block_alloca(&arg_names[i]);
-                                    self.builder.build_store(alloca, arg);
-                                    self.global_scope.insert(arg_names[i].clone(), alloca);
-
-                                    // self.variables.insert(proto.args[i].clone(), alloca);
-                                }
-
                                 let body = self.compile_expr(&args[1])?;
-                                self.builder.build_return(Some(&body));
-                                // return the whole thing after verification and optimization
-                                if function.verify(true) {
-                                    self.fpm.run_on(&function);
-
-                                    // Ok(body)
-                                } else {
-                                    unsafe {
-                                        function.delete();
-                                    }
-
-                                    // Err("Invalid generated function.")
-                                }
-                                // self.global_scope = &mut prev_global_scope;
-
-                                // Pop local scope from the stack
-                                // self.scopes.pop();
 
                                 Ok(body)
                             } else {
@@ -267,24 +218,24 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                                 //     Some(ref init) => self.compile_expr(init)?,
                                 //     None => self.context.f64_type().const_float(0.),
                                 // };
-
+                                
                                 let value = self.compile_expr(&args[1])?;
-                                let function = self.compile_prototype("anon", vec![])?;
+                                // let function = self.compile_prototype("anon", vec![])?;
 
-                                let entry = self.context.append_basic_block(function, "entry");
+                                // let entry = self.context.append_basic_block(function, "entry");
 
-                                self.builder.position_at_end(entry);
+                                // self.builder.position_at_end(entry);
 
                                 // update fn field
-                                self.fn_value_opt = Some(function);
+                                // self.fn_value_opt = Some(function);
 
                                 let alloca = self.create_entry_block_alloca(var_name);
 
                                 self.builder.build_store(alloca, value);
 
                                 self.global_scope.insert(var_name.clone(), alloca);
-                                self.builder
-                                    .build_return(Some(&value.as_basic_value_enum()));
+                                // self.builder
+                                //     .build_return(Some(&value.as_basic_value_enum()));
                                 // let alloca = self.create_entry_block_alloca(var_name);
 
                                 // self.builder.build_store(alloca, initial_val);
@@ -343,19 +294,19 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
                                         match self.module.get_function(op) {
                                             Some(f) => {
-                                                let function =
-                                                    self.compile_prototype("anon", vec![])?;
+                                                // let function =
+                                                //     self.compile_prototype("anon", vec![])?;
 
-                                                let entry = self
-                                                    .context
-                                                    .append_basic_block(function, "entry");
+                                                // let entry = self
+                                                //     .context
+                                                //     .append_basic_block(function, "entry");
 
-                                                self.builder.position_at_end(entry);
+                                                // self.builder.position_at_end(entry);
 
-                                                // update fn field
-                                                self.fn_value_opt = Some(function);
+                                                // // update fn field
+                                                // self.fn_value_opt = Some(function);
 
-                                                // self.builder.build_return(Some(&value.as_basic_value_enum()));
+                                                // // self.builder.build_return(Some(&value.as_basic_value_enum()));
 
                                                 let mut compiled_args = vec![];
 
@@ -377,20 +328,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                                                     .unwrap()
                                                     .into_float_value();
 
-                                                self.builder.build_return(Some(&body));
-                                                // return the whole thing after verification and optimization
-                                                if function.verify(true) {
-                                                    self.fpm.run_on(&function);
-
                                                     Ok(body)
-                                                } else {
-                                                    unsafe {
-                                                        function.delete();
-                                                    }
-
-                                                    Err("Invalid generated function.")
-                                                }
-                                                // return Ok(body);
                                             }
                                             None => {
                                                 let intrinsic =
@@ -407,25 +345,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                                                                 .as_slice(),
                                                         )
                                                         .unwrap();
-                                                    // if let Some(existing_function) = self.module.get_function("anon") {
-                                                    //     // Delete the existing function
-                                                    //     unsafe {
-                                                    //         existing_function.delete();
-                                                    //     }
-                                                    // }
-                                                    // Compile the prototype and anonymous function with zero args
-                                                    let function =
-                                                        self.compile_prototype("anon", vec![])?;
 
-                                                    let entry = self
-                                                        .context
-                                                        .append_basic_block(function, "entry");
-                                                    self.builder.position_at_end(entry);
-
-                                                    // Update fn_value_opt field
-                                                    self.fn_value_opt = Some(function);
-
-                                                    // Process the compiled arguments
+                                                    // // Process the compiled arguments
                                                     let mut compiled_args = vec![];
                                                     for arg in args.iter() {
                                                         let foo =
@@ -448,7 +369,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                                                         .unwrap()
                                                         .into_float_value();
 
-                                                    self.builder.build_return(Some(&body));
+                                                    // self.builder.build_return(Some(&body));
                                                     Ok(body)
                                                     // Verify and optimize the generated function
                                                     // if function.verify(true) {
@@ -483,14 +404,6 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         name: &str,
         arg_names: Vec<String>,
     ) -> Result<FunctionValue<'ctx>, &'static str> {
-
-        // if let Some(existing_function) = self.module.get_function(name) {
-        //     // Delete the existing function
-        //     unsafe {
-        //         existing_function.delete();
-        //     }
-        // }
-    
         let ret_type = self.context.f64_type();
         let nargs = arg_names.len();
         let args_types = std::iter::repeat(ret_type)
@@ -511,49 +424,77 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         Ok(fn_val)
     }
 
-    // /// Compiles the specified `Function` into an LLVM `FunctionValue`.
-    // fn compile_fn(&mut self) -> Result<FunctionValue<'ctx>, &'static str> {
-    //     println!("in compile_fn compiling fn: {:?}", proto);
-    //     println!("in compile_fn compiling fn: {:?}", proto);
-    //     let function = self.compile_prototype(proto)?;
+    /// Compiles the specified `Function` into an LLVM `FunctionValue`.
+    fn compile_fn(&mut self) -> Result<FunctionValue<'ctx>, &'static str> {
+        let (op, args) = match self.expr {
+            // (define (square x) (* x x)))
+            Expr::List(exs) => {
+                let (op, args) = extract_op_and_args(exs)?;
+                match op {
+                    "define" => {
+                        let sig = &args.clone()[0];
+                        match sig { // (square x) or just x 
+                            Expr::List(sig_exs) => { // this arm is for function definition (square x)
+                                let (fn_name, fn_args) = extract_op_and_args(&sig_exs)?;
+                                // Extract arg_names and validate
+                                let mut arg_names: Vec<String> = vec![];
+                                for arg in fn_args.iter() {
+                                    match arg {
+                                        Expr::Symbol(s) => arg_names.push(s.to_string()),
+                                        _ => return Err("in define: all the elements in the argument list must be symbols"),
+                                    }
+                                }
+                                (fn_name, arg_names)
+                            }
+                            Expr::Symbol(s) => ("anon", vec![].into()),
+                            _ => panic!("in define: the first element in the argument list must be a symbol"),
+                        }
+                    }
+                    _ => ("anon", vec![].into()),
+                }
+            }
+            _ => ("anon", vec![].into()),
+        };
 
-    //     let entry = self.context.append_basic_block(function, "entry");
+        let function = self.compile_prototype(op, args.clone())?;
 
-    //     self.builder.position_at_end(entry);
+        let entry = self.context.append_basic_block(function, "entry");
 
-    //     // update fn field
-    //     self.fn_value_opt = Some(function);
+        self.builder.position_at_end(entry);
 
-    //     // build variables map
-    //     self.variables.reserve(proto.args.len());
+        // update fn field
+        self.fn_value_opt = Some(function);
 
-    //     for (i, arg) in function.get_param_iter().enumerate() {
-    //         let arg_name = proto.args[i].as_str();
-    //         let alloca = self.create_entry_block_alloca(arg_name);
+        // build variables map
+        self.global_scope.reserve(args.len());
 
-    //         self.builder.build_store(alloca, arg);
+        for (i, arg) in function.get_param_iter().enumerate() {
+            let arg_name = args[i].as_str();
+            let alloca = self.create_entry_block_alloca(arg_name);
 
-    //         self.variables.insert(proto.args[i].clone(), alloca);
-    //     }
+            self.builder.build_store(alloca, arg);
 
-    //     // compile body
-    //     let body = self.compile_expr(self.function.body.as_ref().unwrap())?;
+            self.global_scope.insert(args[i].clone(), alloca);
+        }
 
-    //     self.builder.build_return(Some(&body));
+        // compile body
+        let body = self.compile_expr(self.expr)?;
 
-    //     // return the whole thing after verification and optimization
-    //     if function.verify(true) {
-    //         self.fpm.run_on(&function);
+        self.builder.build_return(Some(&body));
 
-    //         Ok(function)
-    //     } else {
-    //         unsafe {
-    //             function.delete();
-    //         }
+        // return the whole thing after verification and optimization
+        if function.verify(true) {
+            self.fpm.run_on(&function);
 
-    //         Err("Invalid generated function.")
-    //     }
-    // }
+            Ok(function)
+        } else {
+            unsafe {
+                function.delete();
+            }
+
+            Err("Invalid generated function.")
+        }
+    }
 
     /// Compiles the specified `Function` in the given `Context` and using the specified `Builder`, `PassManager`, and `Module`.
     pub fn compile(
@@ -563,7 +504,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         module: &'a Module<'ctx>,
         expr: &Expr,
         global_scope: &'a mut HashMap<String, PointerValue<'ctx>>,
-    ) -> Result<FloatValue<'ctx>, &'static str> {
+    ) -> Result<FunctionValue<'ctx>, &'static str> {
         let mut compiler = Compiler {
             context,
             builder,
@@ -574,6 +515,6 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             fn_value_opt: None,
         };
         // Directly call the modified compile_expr method
-        compiler.compile_expr(expr)
+        compiler.compile_fn()
     }
 }

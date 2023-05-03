@@ -54,15 +54,15 @@ fn main() -> Result<(), ReadlineError> {
     let module = context.create_module("repl");
     let builder = context.create_builder();
     let fpm = PassManager::create(&module);
-    fpm.add_instruction_combining_pass();
-    fpm.add_reassociate_pass();
-    fpm.add_gvn_pass();
-    fpm.add_cfg_simplification_pass();
-    fpm.add_basic_alias_analysis_pass();
-    fpm.add_promote_memory_to_register_pass();
-    fpm.add_instruction_combining_pass();
-    fpm.add_reassociate_pass();
-    fpm.initialize();
+    // fpm.add_instruction_combining_pass();
+    // fpm.add_reassociate_pass();
+    // fpm.add_gvn_pass();
+    // fpm.add_cfg_simplification_pass();
+    // fpm.add_basic_alias_analysis_pass();
+    // fpm.add_promote_memory_to_register_pass();
+    // fpm.add_instruction_combining_pass();
+    // fpm.add_reassociate_pass();
+    // fpm.initialize();
     let mut global_scope = HashMap::new();
 
     let mut previous_exprs = Vec::new();
@@ -86,21 +86,31 @@ fn main() -> Result<(), ReadlineError> {
         &read("(square 2)").unwrap(),
         &mut global_scope,
     );
-    
+
     let result3 = Compiler::compile(
         &context,
         &builder,
         &fpm,
         &module,
-        &read("(llvm.abs -2)").unwrap(),
+        &read("(llvm.fabs -2.5)").unwrap(),
         &mut global_scope,
     );
+
+    let result4 = Compiler::compile(
+        &context,
+        &builder,
+        &fpm,
+        &module,
+        &read("(+ 2 2)").unwrap(),
+        &mut global_scope,
+    )
+    .unwrap();
+    println!("r4{:?}\n\n", result4);
 
     let ee = module
         .create_jit_execution_engine(OptimizationLevel::None)
         .unwrap();
 
-    println!("ee: {:#?}", ee);
     let sq = unsafe {
         ee.get_function::<unsafe extern "C" fn(f64) -> f64>("square")
             .ok()
@@ -108,7 +118,7 @@ fn main() -> Result<(), ReadlineError> {
     .unwrap();
     let maybe_fn = unsafe { ee.get_function::<unsafe extern "C" fn() -> f64>("anon") }.unwrap();
 
-    // todo figure out the name mangling
+    // // todo figure out the name mangling
     let maybe_fn2 = unsafe { ee.get_function::<unsafe extern "C" fn() -> f64>("anon.1") }.unwrap();
 
     unsafe {
@@ -120,31 +130,15 @@ fn main() -> Result<(), ReadlineError> {
     }
     println!("{:#?}", module.get_functions().collect::<Vec<_>>());
 
-    // let x = Intrinsic::find("llvm.abs");
-
-
-    // let maybe_fn = unsafe { ee.get_function::<unsafe extern "C" fn(f64) -> f64>("name") };
-    // let compiled_fn = match maybe_fn {
-    // Ok(f) => f,
-    // Err(err) => panic!()
-    // Err("")
-    // println!("!> Error during execution: {:?}", err);
-    // continue;
-    // }
-    // };
-
     unsafe {
         println!("=> {}", sq.call(3.0));
     }
 
-    // println!(r"{}", module.to_string());
-    // println!("{:#?}", module
-    // module.
-    // let module_string = "; ModuleID = 'repl'\nsource_filename = \"repl\"\n\ndefine double @square(double %x) {\nentry:\n  %x1 = alloca double, align 8\n  store double %x, double* %x1, align 8\n}\n";
+    let mut loop_counter = 0; // used for module name
 
-    // println!("{}", module_string);
     loop {
-        let prompt_str = format! {"mylisp[%{}]>> ", rl.history().len().to_string()};
+        let prompt_str =
+            format! {"\x1b[1;32mmylisp[HIST:{} | LOOP: {}]>>\x1b[0m ", rl.history().len().to_string(),loop_counter};
 
         let readline = rl.readline(prompt_str.as_str());
         match readline {
@@ -152,30 +146,28 @@ fn main() -> Result<(), ReadlineError> {
                 rl.add_history_entry(line.as_str())?;
                 match read(&line) {
                     Ok(expr) => {
-                        // for (index, prev) in previous_exprs.iter().enumerate() {
-                        //     println!("{}: {:?}", index, prev);
+                        let mod_name = format!("repl_{}", loop_counter);
+                        let module = context.create_module(&mod_name);
+                        loop_counter += 1;
 
-                        //     Compiler::compile(&context, &builder, &module, prev)
-                        //         .expect("Cannot re-add previously compiled function.");
-                        // }
-                        // compiler.expr = &expr.clone();
-                        // compiler.compile_expr(&expr);
+                        // recompile every previously parsed function into the new module
+                        // this clears the anon so we dont get anon.1 anon.2 etc
+                        for prev in &previous_exprs {
+                            Compiler::compile(
+                                &context,
+                                &builder,
+                                &fpm,
+                                &module,
+                                prev,
+                                &mut global_scope,
+                            )
+                            .expect("Cannot re-add previously compiled function.");
+                        }
 
-                        previous_exprs.push(expr.clone());
                         if display_parser_output {
                             println!("{:?}", expr);
                         }
-                        // println!("gs{:?}", compiler.global_scope.clone());
 
-                        // match compiler.compile_expr(&expr.to_owned()) {
-                        // match Compiler::compile(
-                        //     &context,
-                        //     &builder,
-                        //     &fpm,
-                        //     &module,
-                        //     &expr,
-                        //     &mut compiler.global_scope.clone(),
-                        // )
                         match Compiler::compile(
                             &context,
                             &builder,
@@ -185,30 +177,37 @@ fn main() -> Result<(), ReadlineError> {
                             &mut global_scope,
                         ) {
                             Ok(result) => {
-                                // if is_anonymous {
-                                // let ee = module
-                                //     .create_jit_execution_engine(OptimizationLevel::None)
-                                //     .unwrap();
-                                    // module.
-                                let maybe_fn = unsafe {
-                                    ee.get_function::<unsafe extern "C" fn() -> f64>("anon")
-                                };
+                                println!("MODULE CONTENTS: \n\n{}", module.to_string());
 
-                                let compiled_fn = match maybe_fn {
-                                    Ok(f) => f,
-                                    Err(err) => {
-                                        println!("!> Error during execution: {:?}", err);
-                                        continue;
+                                let function_name = result.get_name().to_str().unwrap(); // I assume this returns a &str
+
+                                if function_name.contains("anon") {
+                                    let ee = module
+                                        .create_jit_execution_engine(OptimizationLevel::None)
+                                        .unwrap();
+                                    let maybe_fn = unsafe {
+                                        ee.get_function::<unsafe extern "C" fn() -> f64>(
+                                            function_name,
+                                        )
+                                    };
+
+                                    let compiled_fn = match maybe_fn {
+                                        Ok(f) => f,
+                                        Err(err) => {
+                                            println!("!> Error during execution: {:?}", err);
+                                            continue;
+                                        }
+                                    };
+
+                                    unsafe {
+                                        println!("CALL=> {}", compiled_fn.call());
                                     }
-                                };
+                                } else {
+                                    previous_exprs.push(expr);
 
-                                unsafe {
-                                    println!("CALL=> {}", compiled_fn.call());
+                                    println!("NON_ANON");
+                                    println!("{:?}\n\n", result);
                                 }
-                                
-                                // println!("{}\n\n{}", result, module.print_to_string());
-                                println!("{}", module.to_string());
-                                println!("{:?}\n\n", result);
                             }
 
                             Err(err) => println!("Error: {}", err),
