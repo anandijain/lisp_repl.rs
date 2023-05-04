@@ -4,27 +4,15 @@ use inkwell::{
     context::Context,
     module::Module,
     passes::PassManager,
-    types::{BasicMetadataTypeEnum, BasicTypeEnum},
-    values::{BasicMetadataValueEnum, BasicValueEnum, FloatValue, FunctionValue, PointerValue},
-    FloatPredicate,
+    types::BasicMetadataTypeEnum,
+    values::{BasicMetadataValueEnum, FloatValue, FunctionValue, PointerValue},
 };
-use inkwell::{
-    types::{BasicType, PointerType},
-    values::{AnyValue, AnyValueEnum, BasicValue, GenericValue},
-    OptimizationLevel,
-};
-use peg::{error::ParseError, parser};
+use peg::parser;
 use std::{
-    borrow::Borrow,
     collections::HashMap,
     fmt,
-    iter::Peekable,
     num::{ParseFloatError, ParseIntError},
-    ops::DerefMut,
-    str::Chars,
 };
-
-use std::error::Error;
 
 parser! {
     grammar lisp_parser() for str {
@@ -209,37 +197,12 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                             }
                         } else {
                             // println!("defining a variable ");
-
                             // Handle the define variable case
                             if let Expr::Symbol(var_name) = &args[0] {
-                                // let var_name_str = var_name.as_str();
-
-                                // let initial_val = match *initializer {
-                                //     Some(ref init) => self.compile_expr(init)?,
-                                //     None => self.context.f64_type().const_float(0.),
-                                // };
-                                
                                 let value = self.compile_expr(&args[1])?;
-                                // let function = self.compile_prototype("anon", vec![])?;
-
-                                // let entry = self.context.append_basic_block(function, "entry");
-
-                                // self.builder.position_at_end(entry);
-
-                                // update fn field
-                                // self.fn_value_opt = Some(function);
-
                                 let alloca = self.create_entry_block_alloca(var_name);
-
                                 self.builder.build_store(alloca, value);
-
                                 self.global_scope.insert(var_name.clone(), alloca);
-                                // self.builder
-                                //     .build_return(Some(&value.as_basic_value_enum()));
-                                // let alloca = self.create_entry_block_alloca(var_name);
-
-                                // self.builder.build_store(alloca, initial_val);
-
                                 Ok(value)
                             } else {
                                 Err("define requires a variable name to be a symbol.")
@@ -290,24 +253,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                                         }
                                     }
                                     _ => {
-                                        // (square 2)
-
                                         match self.module.get_function(op) {
                                             Some(f) => {
-                                                // let function =
-                                                //     self.compile_prototype("anon", vec![])?;
-
-                                                // let entry = self
-                                                //     .context
-                                                //     .append_basic_block(function, "entry");
-
-                                                // self.builder.position_at_end(entry);
-
-                                                // // update fn field
-                                                // self.fn_value_opt = Some(function);
-
-                                                // // self.builder.build_return(Some(&value.as_basic_value_enum()));
-
                                                 let mut compiled_args = vec![];
 
                                                 for arg in args.iter() {
@@ -328,7 +275,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                                                     .unwrap()
                                                     .into_float_value();
 
-                                                    Ok(body)
+                                                Ok(body)
                                             }
                                             None => {
                                                 let intrinsic =
@@ -369,18 +316,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                                                         .unwrap()
                                                         .into_float_value();
 
-                                                    // self.builder.build_return(Some(&body));
                                                     Ok(body)
-                                                    // Verify and optimize the generated function
-                                                    // if function.verify(true) {
-                                                    //     self.fpm.run_on(&function);
-                                                    //     Ok(body)
-                                                    // } else {
-                                                    //     unsafe {
-                                                    //         function.delete();
-                                                    //     }
-                                                    //     Err("Invalid generated function.")
-                                                    // }
                                                 } else {
                                                     Err("no function found with that name")
                                                 }
@@ -476,6 +412,15 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
             self.global_scope.insert(args[i].clone(), alloca);
         }
+
+        // let tmp = self.global_scope.clear();
+
+        // for (k, v) in self.global_scope.iter() {
+        //     // let arg_name = args[i].as_str();
+        //     // let alloca = self.create_entry_block_alloca(k);
+        //     v.
+        //     self.builder.build_store(alloca, v.into());
+        // }
 
         // compile body
         let body = self.compile_expr(self.expr)?;

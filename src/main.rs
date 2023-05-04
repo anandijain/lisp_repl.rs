@@ -65,85 +65,89 @@ fn main() -> Result<(), ReadlineError> {
     // fpm.initialize();
     let mut global_scope = HashMap::new();
 
-    let mut previous_exprs = Vec::new();
-
-    let result = Compiler::compile(
-        &context,
-        &builder,
-        &fpm,
-        &module,
-        &read("(define (square x) (* x x))").unwrap(),
-        &mut global_scope,
-    );
-    println!("{:?}\n\n", result);
-    println!("{}", module.print_to_string().to_string());
-
-    let result2 = Compiler::compile(
-        &context,
-        &builder,
-        &fpm,
-        &module,
-        &read("(square 2)").unwrap(),
-        &mut global_scope,
-    );
-
-    let result3 = Compiler::compile(
-        &context,
-        &builder,
-        &fpm,
-        &module,
-        &read("(llvm.fabs -2.5)").unwrap(),
-        &mut global_scope,
-    );
-
-    let result4 = Compiler::compile(
-        &context,
-        &builder,
-        &fpm,
-        &module,
-        &read("(+ 2 2)").unwrap(),
-        &mut global_scope,
-    )
-    .unwrap();
-    println!("r4{:?}\n\n", result4);
-
+    let mut previous_exprs: Vec<Expr> = Vec::new();
+    
     let ee = module
-        .create_jit_execution_engine(OptimizationLevel::None)
-        .unwrap();
-
-    let sq = unsafe {
-        ee.get_function::<unsafe extern "C" fn(f64) -> f64>("square")
-            .ok()
-    }
+    .create_jit_execution_engine(OptimizationLevel::None)
     .unwrap();
-    let maybe_fn = unsafe { ee.get_function::<unsafe extern "C" fn() -> f64>("anon") }.unwrap();
 
-    // // todo figure out the name mangling
-    let maybe_fn2 = unsafe { ee.get_function::<unsafe extern "C" fn() -> f64>("anon.1") }.unwrap();
+    // let result = Compiler::compile(
+    //     &context,
+    //     &builder,
+    //     &fpm,
+    //     &module,
+    //     &read("(define (square x) (* x x))").unwrap(),
+    //     &mut global_scope,
+    // );
+    // println!("{:?}\n\n", result);
+    // println!("{}", module.print_to_string().to_string());
 
-    unsafe {
-        println!(
-            "YO YO YO THE EXECUTION ENGINE GOT: {:?}\n\n and {:?}",
-            maybe_fn.call(),
-            maybe_fn2.call()
-        );
-    }
-    println!("{:#?}", module.get_functions().collect::<Vec<_>>());
+    // let result2 = Compiler::compile(
+    //     &context,
+    //     &builder,
+    //     &fpm,
+    //     &module,
+    //     &read("(square 2)").unwrap(),
+    //     &mut global_scope,
+    // );
 
-    unsafe {
-        println!("=> {}", sq.call(3.0));
-    }
+    // let result3 = Compiler::compile(
+    //     &context,
+    //     &builder,
+    //     &fpm,
+    //     &module,
+    //     &read("(llvm.fabs -2.5)").unwrap(),
+    //     &mut global_scope,
+    // );
+
+    // let result4 = Compiler::compile(
+    //     &context,
+    //     &builder,
+    //     &fpm,
+    //     &module,
+    //     &read("(+ 2 2)").unwrap(),
+    //     &mut global_scope,
+    // )
+    // .unwrap();
+    // println!("r4{:?}\n\n", result4);
+
+
+
+    // let sq = unsafe {
+    //     ee.get_function::<unsafe extern "C" fn(f64) -> f64>("square")
+    //         .ok()
+    // }
+    // .unwrap();
+    // let maybe_fn = unsafe { ee.get_function::<unsafe extern "C" fn() -> f64>("anon") }.unwrap();
+
+    // // // todo figure out the name mangling
+    // let maybe_fn2 = unsafe { ee.get_function::<unsafe extern "C" fn() -> f64>("anon.1") }.unwrap();
+
+    // unsafe {
+    //     println!(
+    //         "YO YO YO THE EXECUTION ENGINE GOT: {:?}\n\n and {:?}",
+    //         maybe_fn.call(),
+    //         maybe_fn2.call()
+    //     );
+    // }
+    // println!("{:#?}", module.get_functions().collect::<Vec<_>>());
+
+    // unsafe {
+    //     println!("=> {}", sq.call(3.0));
+    // }
 
     let mut loop_counter = 0; // used for module name
 
     loop {
-        let prompt_str =
-            format! {"\x1b[1;32mmylisp[HIST:{} | LOOP: {}]>>\x1b[0m ", rl.history().len().to_string(),loop_counter};
+        let prompt_str = format! {"\x1b[1;32mmylisp[HIST:{} | LOOP: {}]>>\x1b[0m ", rl.history().len().to_string(),loop_counter};
 
         let readline = rl.readline(prompt_str.as_str());
         match readline {
             Ok(line) => {
                 rl.add_history_entry(line.as_str())?;
+                if line.is_empty() {
+                    continue;
+                }
                 match read(&line) {
                     Ok(expr) => {
                         let mod_name = format!("repl_{}", loop_counter);
@@ -177,11 +181,17 @@ fn main() -> Result<(), ReadlineError> {
                             &mut global_scope,
                         ) {
                             Ok(result) => {
-                                println!("MODULE CONTENTS: \n\n{}", module.to_string());
+                                println!(
+                                    "GLOBAL_SCOPE:\n\n {:?}\n\nMODULE CONTENTS: \n\n{}",
+                                    global_scope,
+                                    module.to_string()
+                                );
 
-                                let function_name = result.get_name().to_str().unwrap(); // I assume this returns a &str
+                                let function_name = result.get_name().to_str().unwrap();
+                                // I assume this returns a &str
 
                                 if function_name.contains("anon") {
+                                    // previous_exprs.push(expr);
                                     let ee = module
                                         .create_jit_execution_engine(OptimizationLevel::None)
                                         .unwrap();
@@ -198,8 +208,9 @@ fn main() -> Result<(), ReadlineError> {
                                             continue;
                                         }
                                     };
-
+                                    
                                     unsafe {
+                                        println!("about to call ");
                                         println!("CALL=> {}", compiled_fn.call());
                                     }
                                 } else {
@@ -210,7 +221,15 @@ fn main() -> Result<(), ReadlineError> {
                                 }
                             }
 
-                            Err(err) => println!("Error: {}", err),
+                            Err(err) => {
+                                println!(
+                                    "GLOBAL_SCOPE:\n\n {:#?}\n\nMODULE CONTENTS: \n\n{}",
+                                    global_scope,
+                                    module.to_string()
+                                );
+
+                                println!("Error: {}", err)
+                            }
                         }
                     }
                     Err(err) => println!("Error: {}", err),
@@ -234,3 +253,4 @@ fn main() -> Result<(), ReadlineError> {
     rl.save_history("history.txt")?;
     Ok(())
 }
+// is_x86_feature_detected!("avx2");

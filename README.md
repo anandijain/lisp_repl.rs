@@ -1,5 +1,62 @@
 ## dew 
 
+(define x 5)
+x # segfaults now 
+
+note multiline repl pasting doesn't work
+// doesn't work yet 
+<!-- (step f 3.0 0.1) -->
+
+(define (f x) (* -1 x))
+(define (step f x dt) (+ x (* dt (f x))))
+```julia
+julia> f(x) = -x
+f (generic function with 1 method)
+
+julia> step(f, x, dt) = x + dt*f(x)
+step (generic function with 1 method)
+
+
+julia> @code_llvm optimize=false step(f, 3.0, 0.1)
+;  @ REPL[14]:1 within `step`
+```
+```llvm
+define double @julia_step_3438(double %0, double %1) #0 {
+top:
+  %2 = call {}*** @julia.get_pgcstack()
+  %3 = bitcast {}*** %2 to {}**
+  %current_task = getelementptr inbounds {}*, {}** %3, i64 -13
+  %4 = bitcast {}** %current_task to i64*
+  %world_age = getelementptr inbounds i64, i64* %4, i64 14
+; ┌ @ REPL[13]:1 within `f`
+; │┌ @ float.jl:406 within `-`
+    %5 = fneg double %0
+; └└
+; ┌ @ float.jl:410 within `*`
+   %6 = fmul double %1, %5
+; └
+; ┌ @ float.jl:408 within `+`
+   %7 = fadd double %0, %6
+; └
+  ret double %7
+}
+```
+```
+
+mylisp[HIST:100 | LOOP: 11]>> (step f 3.0 0.1)
+
+List([Symbol("step"), Symbol("f"), Float(3.0), Float(0.1)])
+Instruction does not dominate all uses!
+  %f1 = alloca double, align 8
+  %f = load double, double* %f1, align 8
+Instruction does not dominate all uses!
+  %f1 = alloca double, align 8
+  %f1 = load double, double* %f1, align 8
+Error: Invalid generated function.
+
+// this works 
+(define (step x dt) (+ x (* dt (* -1 x)))) 
+(step (step (step 3 0.1) 0.1) 0.1) // 2.187...
 
 intrinsics to test 
 
@@ -182,4 +239,52 @@ entry:
 
 (display (example-function1 7)) ; Output: 22 (10 + 7 + 5)
 (display (example-function2 5)) ; Output: 55 (20 + 5 + 30)
+```
+
+```scheme
+(define (euler f x0 t0 dt n)
+  (define (euler-helper x t steps)
+    (if (= steps n)
+        (list x)
+        (begin
+          (set! x (f x t))
+          (set! t (+ t dt))
+          (euler-helper x t (+ steps 1))
+        )
+    )
+  )
+  (euler-helper x0 t0 0)
+)
+
+(define (lorenz x t)
+  (let* ((sigma 10.0)
+         (rho 28.0)
+         (beta 8/3)
+         (x0 (vector-ref x 0))
+         (y0 (vector-ref x 1))
+         (z0 (vector-ref x 2))
+         (dxdt (* sigma (- y0 x0)))
+         (dydt (- (* x0 (- rho z0)) y0))
+         (dzdt (- (* x0 y0) (* beta z0))))
+    (vector (+ x0 (* dt dxdt))
+            (+ y0 (* dt dydt))
+            (+ z0 (* dt dzdt)))
+  )
+)
+
+(define dt 0.01)
+(define n 10000)
+(define x0 (vector 1.0 1.0 1.0))
+
+(define result (euler lorenz x0 0 dt n))
+
+(for-each
+  (lambda (x)
+    (display (vector-ref x 0))
+    (display " ")
+    (display (vector-ref x 1))
+    (display " ")
+    (display (vector-ref x 2))
+    (newline))
+  result)
 ```
